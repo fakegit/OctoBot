@@ -4,12 +4,14 @@ __pycache__/
 *$py.class
 *.orig
 
+# Node
+node_modules/
+
 # C extensions
 *.so
 
 # Distribution / packaging
 .Python
-.idea
 .pytest_cache/
 env/
 build/
@@ -19,6 +21,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!packages/protocol/scripts/lib/
+!packages/protocol/scripts/lib/*.py
 lib64/
 parts/
 sdist/
@@ -67,6 +71,30 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Docusaurus documentation
+docs/node_modules/
+docs/build/
+docs/.docusaurus/
+docs/tsconfig.tsbuildinfo
+# Auto-generated tentacle docs (from collect-tentacles.mjs)
+docs/content/creators/
+docs/content/guides/exchanges.md
+docs/content/guides/exchanges/
+docs/content/guides/exchanges/_category_.json
+docs/content/guides/strategies/getting-started.md
+docs/content/guides/strategies/_category_.json
+docs/content/guides/strategies/trading-modes/
+docs/content/guides/strategies/trading-modes/_category_.json
+docs/content/guides/strategies/evaluators/
+docs/content/guides/strategies/evaluators/**/_category_.json
+# Migration script (one-time use, not needed in repo)
+docs/scripts/migrate.mjs
+# Auto-synced root docs (from sync-root-docs.mjs)
+docs/content/developers/contributing.md
+docs/content/developers/changelog.md
+# Auto-generated llms.txt (from generate-llms-txt.mjs)
+docs/static/llms.txt
+
 # PyBuilder
 target/
 
@@ -85,6 +113,9 @@ celerybeat-schedule
 # virtualenv
 .venv
 venv/
+.cursor/venv/
+.cursor/env.sh
+.cursor/pythonpath.sh
 ENV/
 
 # Spyder project settings
@@ -102,9 +133,12 @@ ENV/
 
 # IDE
 .vscode/
+.idea
+.gitpod.yml
 
 # Tentacles manager temporary files
 octobot/creator_temp/
+packages/metadata.yaml
 creator_temp/
 
 # Data
@@ -112,20 +146,59 @@ backtesting/collector/data/
 backtesting/data/
 
 # Tentacles
+output
 tentacles
 downloaded_temp_tentacles
+!packages/tentacles
+!docs/content/developers/packages/tentacles
 
 # User config
-user/
+user
 temp_config.json
 
 *.csv
 *.ods
 *.c
 *.h
+.DS_Store
 
 # OctoBot logs
 logs
 
 # Debug
 cython_debug/
+
+# ssl
+letsencrypt/
+
+# dev env
+.env
+
+# Ansible decrypted temp files, SSH keys, and production collections config
+infra/**/*.dec.yml
+infra/**/.ssh/
+
+# Ansible Galaxy installed roles (installed via requirements.yml)
+infra/**/roles/geerlingguy.*/
+
+# Pants build system
+/.pants.d/
+/dist/
+
+# bin
+nltk_data/
+installer/
+
+# resources watcher
+*.dump
+
+# node
+*.db*
+
+# ai
+analysis/
+
+# Agent session plans (never commit; see path.deny_agent_plans in extended_linter)
+**/PLAN-*.md
+**/*.plan.md
+.cursor/plans/

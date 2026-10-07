@@ -13,8 +13,65 @@
     "accepted_terms": {
       "type": "boolean"
     },
+    "octobot_name": {
+      "type": "string"
+    },
+    "distribution": {
+      "type": "string"
+    },
     "profile": {
       "type": "string"
+    },
+    "sync": {
+      "type": "object",
+      "properties": {
+        "encryption_secret": {
+          "type": "string"
+        }
+      }
+    },
+    "community": {
+      "type": "object",
+      "properties": {
+        "bot_id": {
+          "type": "string"
+        },
+        "local_data_identifier": {
+          "type": "string"
+        },
+        "supabase.auth.token": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        }
+      }
+    },
+    "journal": {
+      "type": "object",
+      "properties": {
+        "install_id": {
+          "type": "string"
+        },
+        "onboarding_started_at": {
+          "type": ["number", "null"]
+        },
+        "first_automation_started_at": {
+          "type": ["number", "null"]
+        },
+        "connection_sequence": {
+          "type": "integer"
+        },
+        "last_user_data_pull_at": {
+          "type": ["number", "null"]
+        },
+        "tracked_automation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     },
     "backtesting": {
       "type": "object",
@@ -43,17 +100,6 @@
         }
       }
     },
-    "metrics": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "metrics-bot-id": {
-          "type": "string"
-        }
-      }
-    },
     "community-token": {
       "type": "string"
     },
@@ -67,6 +113,9 @@
           "type": "boolean"
         },
         "trades": {
+          "type": "boolean"
+        },
+        "other": {
           "type": "boolean"
         },
         "notification-type": {
@@ -104,7 +153,5 @@
     "services",
     "notification"
   ],
-  "additionalProperties": {
-    "type": "string"
-  }
+  "additionalProperties": true
 }

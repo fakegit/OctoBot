@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -22,6 +22,7 @@ import octobot_commons.data_util as data_util
 import octobot_commons.tentacles_management as tentacles_management
 import octobot_commons.logging as common_logging
 import octobot_commons.constants as commons_constants
+import octobot_commons.errors as commons_errors
 
 import octobot.constants as constants
 import octobot.strategy_optimizer as strategy_optimizer
@@ -53,6 +54,10 @@ class StrategyOptimizer:
         self.config = config
         self.tentacles_setup_config = copy.deepcopy(tentacles_setup_config)
         self.trading_mode = trading_modes.get_activated_trading_mode(tentacles_setup_config)
+        if self.trading_mode.get_name() not in self._get_compatible_trading_modes():
+            raise commons_errors.ConfigTradingError(
+                f"{self.trading_mode.get_name()} is not supported trading mode for the {self.get_name()}"
+            )
         self.strategy_class = tentacles_management.get_class_from_string(
             strategy_name, evaluators.StrategyEvaluator,
             tentacles_Evaluator.Strategies, tentacles_management.evaluator_parent_inspection)
@@ -66,8 +71,11 @@ class StrategyOptimizer:
         self.errors = set()
 
         self.is_computing = False
+        self.is_finished = False
         self.run_id = 0
         self.total_nb_runs = 0
+
+        self.keep_running = True
 
         if not self.strategy_class:
             self.logger.error(f"Impossible to find a strategy matching class name: {strategy_name} in installed "
@@ -88,6 +96,7 @@ class StrategyOptimizer:
             self.sorted_results_through_all_time_frame = []
 
             previous_log_level = common_logging.get_global_logger_level()
+            previous_log_level_per_handler = common_logging.get_logger_level_per_handler()
 
             try:
                 self.all_TAs = self._get_all_TA() if TAs is None else TAs
@@ -115,8 +124,12 @@ class StrategyOptimizer:
                 self._find_optimal_configuration_using_results()
             finally:
                 self.current_test_suite = None
-                common_logging.set_global_logger_level(previous_log_level)
+                common_logging.set_global_logger_level(
+                    previous_log_level,
+                    handler_levels=previous_log_level_per_handler,
+                )
                 self.is_computing = False
+                self.is_finished = True
                 self.logger.info(f"{self.get_name()} finished computation.")
                 self.logger.info("Logging level restored.")
         else:
@@ -150,6 +163,8 @@ class StrategyOptimizer:
                                 for nb_time_frames in range(1, nb_TFs + 1):
                                     # test different configurations
                                     for _ in range(nb_TFs):
+                                        if not self.keep_running:
+                                            return
                                         self._run_on_config(risk, current_forced_time_frame, nb_time_frames,
                                                             time_frames_conf_history, activated_evaluators)
 
@@ -239,11 +254,14 @@ class StrategyOptimizer:
         self.logger.info(f"{best_result[CONFIG].get_result_string()} "
                          f"average trades count: {best_result[TRADES_IN_RESULT]:f}")
 
-    def get_overall_progress(self):
-        return int((self.run_id - 1) / self.total_nb_runs * 100) if self.total_nb_runs else 0
+    async def get_overall_progress(self):
+        return int((self.run_id - 1) / self.total_nb_runs * 100) if self.total_nb_runs else 0, 0
 
-    def is_in_progress(self):
+    async def is_in_progress(self):
         return self.get_overall_progress() != 100
+
+    def cancel(self):
+        self.keep_running = False
 
     def get_current_test_suite_progress(self):
         return self.current_test_suite.current_progress if self.current_test_suite else 0
@@ -321,3 +339,8 @@ class StrategyOptimizer:
                 in tentacles_manager_api.get_tentacles_activation(self.tentacles_setup_config)[
                     tentacles_manager_constants.TENTACLES_EVALUATOR_PATH].items()
                 if activated and StrategyOptimizer._is_relevant_evaluation_config(evaluator)]
+
+    def _get_compatible_trading_modes(self):
+        # Lazy import of tentacles to let tentacles manager handle imports
+        import tentacles.Trading.Mode as modes
+        return [modes.DailyTradingMode.get_name()]

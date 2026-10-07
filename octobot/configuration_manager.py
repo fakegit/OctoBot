@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -16,15 +16,17 @@
 import copy
 import os
 import shutil
-import json
 
 import octobot.constants as constants
 import octobot_commons.configuration as configuration
 import octobot_commons.constants as common_constants
+import octobot_commons.user_root_folder_provider as user_root_folder_provider
 import octobot_commons.logging as logging
+import octobot_commons.json_util as json_util
 import octobot_tentacles_manager.constants as tentacles_manager_constants
 
 import octobot_trading.api as trading_api
+import octobot.enums as enums
 
 LOGGER_NAME = "Configuration"
 
@@ -94,6 +96,7 @@ def config_health_check(config: configuration.Configuration, in_backtesting: boo
 
     # 3 inform about configuration issues
     if not (in_backtesting or
+            get_distribution(config.config) == enums.OctoBotDistribution.NODE or
             trading_api.is_trader_enabled_in_config(config.config) or
             trading_api.is_trader_simulator_enabled_in_config(config.config)):
         logger.error(f"Real trader and trader simulator are deactivated in configuration. This will prevent OctoBot "
@@ -112,17 +115,20 @@ def config_health_check(config: configuration.Configuration, in_backtesting: boo
 
 
 def init_config(
-        config_file=configuration.get_user_config(),
-        from_config_file=constants.DEFAULT_CONFIG_FILE
+    config_file=None,
+    from_config_file=constants.DEFAULT_CONFIG_FILE
 ):
     """
     Initialize default config
     :param config_file: the config file path
     :param from_config_file: the default config file path
     """
+    if config_file is None:
+        config_file = configuration.get_user_config()
     try:
-        if not os.path.exists(common_constants.USER_FOLDER):
-            os.makedirs(common_constants.USER_FOLDER)
+        user_root = user_root_folder_provider.get_user_root_folder()
+        if not os.path.exists(user_root):
+            os.makedirs(user_root)
 
         shutil.copyfile(from_config_file, config_file)
     except Exception as global_exception:
@@ -136,21 +142,26 @@ def set_default_profile(config, from_default_config_file=constants.DEFAULT_CONFI
     :param from_default_config_file: the config file containing the default profile id to use
     :return: None
     """
-    with open(from_default_config_file, "r") as default_config_file:
-        default_config = json.loads(default_config_file.read())
+    default_config = json_util.read_file(from_default_config_file)
     default_profile_id = default_config.get(common_constants.CONFIG_PROFILE)
     config.select_profile(default_profile_id)
     config.save()
 
 
 def get_default_tentacles_url(version=None):
+    beta_tentacle_bundle = os.getenv(constants.ENV_BETA_TENTACLES_PACKAGE_NAME, constants.BETA_TENTACLE_PACKAGE_NAME)
+    # use beta tentacles repository for beta tentacles
+    tentacles_repository = \
+        os.getenv(constants.ENV_BETA_TENTACLES_REPOSITORY, constants.BETA_TENTACLES_REPOSITORY) \
+        if version == beta_tentacle_bundle else \
+        os.getenv(constants.ENV_TENTACLES_REPOSITORY, constants.TENTACLES_REPOSITORY)
     if version is None:
         version = constants.TENTACLES_REQUIRED_VERSION \
             if constants.TENTACLES_REQUIRED_VERSION else constants.LONG_VERSION
     return os.getenv(
         constants.ENV_TENTACLES_URL,
+        f"https://{tentacles_repository}."
         f"{constants.OCTOBOT_ONLINE}/"
-        f"{os.getenv(constants.ENV_TENTACLES_REPOSITORY, constants.TENTACLES_REPOSITORY)}/"
         f"{os.getenv(constants.ENV_TENTACLES_PACKAGES_SOURCE, constants.OFFICIALS)}/"
         f"{os.getenv(constants.ENV_TENTACLES_PACKAGES_TYPE, constants.TENTACLE_PACKAGES)}/"
         f"{os.getenv(constants.ENV_TENTACLE_CATEGORY, constants.TENTACLE_CATEGORY)}/"
@@ -160,48 +171,50 @@ def get_default_tentacles_url(version=None):
     )
 
 
-def get_default_compiled_tentacles_url():
-    return os.getenv(
-        constants.ENV_COMPILED_TENTACLES_URL,
-        f"{constants.OCTOBOT_ONLINE}/{constants.TENTACLES_REPOSITORY}/"
-        f"{os.getenv(constants.ENV_TENTACLES_PACKAGES_SOURCE, constants.OFFICIALS)}/"
-        f"{os.getenv(constants.ENV_COMPILED_TENTACLES_PACKAGES_TYPE, constants.TENTACLE_PACKAGES)}/"
-        f"{os.getenv(constants.ENV_COMPILED_TENTACLES_CATEGORY, constants.COMPILED_TENTACLE_CATEGORY)}/"
-        f"{os.getenv(constants.ENV_COMPILED_TENTACLES_SUBCATEGORY, '')}"
-    )
-
-
 def get_user_local_config_file():
     try:
-        import octobot_commons.constants as commons_constants
-        return f"{commons_constants.USER_FOLDER}/logging_config.ini"
+        import octobot_commons.user_root_folder_provider as user_root_folder_provider
+
+        return os.path.join(
+            user_root_folder_provider.get_user_root_folder(), "logging_config.ini"
+        )
     except ImportError:
         return None
 
 
 def load_default_tentacles_config(profile_folder):
-    if os.path.isdir(tentacles_manager_constants.USER_REFERENCE_TENTACLE_CONFIG_PATH):
-        shutil.copyfile(tentacles_manager_constants.USER_REFERENCE_TENTACLE_CONFIG_FILE_PATH,
-                        os.path.join(profile_folder, tentacles_manager_constants.constants.CONFIG_TENTACLES_FILE))
-        shutil.copytree(tentacles_manager_constants.USER_REFERENCE_TENTACLE_SPECIFIC_CONFIG_PATH,
-                        os.path.join(profile_folder, tentacles_manager_constants.TENTACLES_SPECIFIC_CONFIG_FOLDER))
+    ref_path = user_root_folder_provider.get_user_reference_tentacle_config_path()
+    ref_file = user_root_folder_provider.get_user_reference_tentacle_config_file_path()
+    ref_spec = user_root_folder_provider.get_user_reference_tentacle_specific_config_path()
+    if os.path.isdir(ref_path):
+        shutil.copyfile(
+            ref_file,
+            os.path.join(profile_folder, tentacles_manager_constants.constants.CONFIG_TENTACLES_FILE),
+        )
+        shutil.copytree(
+            ref_spec,
+            os.path.join(profile_folder, common_constants.TENTACLES_SPECIFIC_CONFIG_FOLDER),
+        )
 
 
 def migrate_from_previous_config(config):
     logger = logging.get_logger(LOGGER_NAME)
     # migrate tentacles configuration if necessary
-    previous_tentacles_config = os.path.join(common_constants.USER_FOLDER, "tentacles_config")
-    previous_tentacles_config_save = os.path.join(common_constants.USER_FOLDER, "tentacles_config.back")
-    if os.path.isdir(previous_tentacles_config) and \
-            not os.path.isdir(tentacles_manager_constants.USER_REFERENCE_TENTACLE_CONFIG_PATH):
+    user_root = user_root_folder_provider.get_user_root_folder()
+    ref_tent_path = user_root_folder_provider.get_user_reference_tentacle_config_path()
+    previous_tentacles_config = os.path.join(user_root, "tentacles_config")
+    previous_tentacles_config_save = os.path.join(user_root, "tentacles_config.back")
+    if os.path.isdir(previous_tentacles_config) and not os.path.isdir(ref_tent_path):
         logger.info(
             f"Updating your tentacles configuration located in {previous_tentacles_config} into the new format. "
             f"A save of your previous tentacles config is available in {previous_tentacles_config_save}")
-        shutil.copytree(previous_tentacles_config,
-                        tentacles_manager_constants.USER_REFERENCE_TENTACLE_CONFIG_PATH)
+        shutil.copytree(previous_tentacles_config, ref_tent_path)
         shutil.move(previous_tentacles_config, previous_tentacles_config_save)
         load_default_tentacles_config(
-            os.path.join(common_constants.USER_PROFILES_FOLDER, common_constants.DEFAULT_PROFILE)
+            os.path.join(
+                user_root_folder_provider.get_user_profiles_folder(),
+                common_constants.DEFAULT_PROFILE,
+            )
         )
     # migrate global configuration if necessary
     config_path = configuration.get_user_config()
@@ -223,3 +236,15 @@ def migrate_from_previous_config(config):
     else:
         # real config issue
         return False
+
+
+def get_distribution(config: dict) -> enums.OctoBotDistribution:
+    if constants.FORCED_DISTRIBUTION:
+        # if there is a forced distribution, use it
+        return enums.OctoBotDistribution(constants.FORCED_DISTRIBUTION)
+    try:
+        # if there is no forced distribution, use the distribution from the config
+        return enums.OctoBotDistribution(config[common_constants.CONFIG_DISTRIBUTION])
+    except KeyError:
+        # default distribution
+        return enums.OctoBotDistribution(common_constants.DEFAULT_DISTRIBUTION)

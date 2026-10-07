@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -23,18 +23,21 @@ from octobot_commons.tests.test_config import load_test_config
 from octobot.commands import start_bot
 from octobot.logger import init_logger
 from octobot.octobot import OctoBot
-
-# All test coroutines will be treated as marked.
-pytestmark = pytest.mark.asyncio
+import octobot.community as community
 
 
 @pytest.mark.timeout(12)
+@pytest.mark.asyncio
 async def test_run_bot():
+    # use custom logs folder
+    logs_folder = "tests/functional_tests/logs"
     # avoid web interface in this test
     WebInterface.enabled = False
-    bot = OctoBot(load_test_config(dict_only=False), ignore_config=True)
+    community.IdentifiersProvider.use_production()
+    config = load_test_config(dict_only=False)
+    bot = OctoBot(config, ignore_config=True)
     bot.task_manager.init_async_loop()
-    await start_bot(bot, init_logger())
+    await start_bot(bot, init_logger(logs_folder=logs_folder))
     await asyncio.sleep(10)
     await stop_bot(bot)
 
@@ -51,10 +54,6 @@ async def stop_bot(bot):
 
     if bot.task_manager.tools_task_group:
         bot.task_manager.tools_task_group.cancel()
-
-    # close community session
-    if bot.community_handler:
-        await bot.community_handler.stop_task()
 
     cancel_ccxt_throttle_task()
 

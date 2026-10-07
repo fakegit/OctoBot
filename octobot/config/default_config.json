@@ -12,10 +12,13 @@
     "global-info": true,
     "price-alerts": true,
     "trades": true,
+    "trading-script-alerts": true,
+    "other": true,
     "notification-type": [
       "web"
     ]
   },
-  "profile": "daily_trading",
-  "accepted_terms": false
+  "profile": "default",
+  "accepted_terms": false,
+  "distribution": "default"
 }

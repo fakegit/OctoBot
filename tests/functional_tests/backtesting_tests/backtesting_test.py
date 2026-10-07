@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -15,6 +15,8 @@
 #  License along with OctoBot. If not, see <https://www.gnu.org/licenses/>.
 import asyncio
 import pytest
+import pytest_asyncio
+import tentacles
 
 import octobot_commons.asyncio_tools as asyncio_tools
 from octobot_trading.api.exchange import get_exchange_manager_from_exchange_id
@@ -26,10 +28,9 @@ from octobot.backtesting.abstract_backtesting_test import DATA_FILES
 from octobot_trading.api.trades import get_trade_history
 from tests.test_utils.bot_management import run_independent_backtesting
 from tests.test_utils.logging import activate_tentacles_loading_logger
+import octobot_tentacles_manager.api as tentacles_manager_api
 
 activate_tentacles_loading_logger()
-# force tentacles import since it's required for backtesting
-import tentacles
 
 BACKTESTING_SYMBOLS = ["ICX/BTC", "VEN/BTC", "XRB/BTC", "2020ADA/BTC", "2020ADA/USDT", "BTC/USDT"]
 
@@ -37,40 +38,40 @@ BACKTESTING_SYMBOLS = ["ICX/BTC", "VEN/BTC", "XRB/BTC", "2020ADA/BTC", "2020ADA/
 pytestmark = pytest.mark.asyncio
 
 
-@pytest.fixture
-def event_loop():
-    loop = asyncio.new_event_loop()
+@pytest_asyncio.fixture
+async def error_container():
+    print("reload_tentacle_info")
+    tentacles_manager_api.reload_tentacle_info()
     # use ErrorContainer to catch otherwise hidden exceptions occurring in async scheduled tasks
     error_container = asyncio_tools.ErrorContainer()
-    loop.set_exception_handler(error_container.exception_handler)
-    yield loop
+    asyncio.get_event_loop().set_exception_handler(error_container.exception_handler)
+    yield
     # will fail if exceptions have been silently raised
-    loop.run_until_complete(error_container.check())
-    loop.close()
+    await error_container.check()
 
 
-async def test_single_data_file_backtesting():
+async def test_single_data_file_backtesting(error_container):
     await _check_double_backtesting(
-        run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]]]),
-        run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]]])
+        run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]]], enable_storage=True),
+        run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]]], enable_storage=True)
     )
 
 
-async def test_single_data_file_no_logs_backtesting():
+async def test_single_data_file_no_logs_backtesting(error_container):
     await _check_double_backtesting(
         run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]]], use_loggers=False),
         run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]]], use_loggers=False)
     )
 
 
-async def test_single_data_file_mixed_logs_backtesting():
+async def test_single_data_file_mixed_logs_backtesting(error_container):
     await _check_double_backtesting(
         run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]]], use_loggers=False),
         run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]]], use_loggers=True)
     )
 
 
-async def test_double_synchronized_data_file_backtesting():
+async def test_double_synchronized_data_file_backtesting(error_container):
     await _check_double_backtesting(
         run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[0]],
                                      DATA_FILES[BACKTESTING_SYMBOLS[1]]],
@@ -81,7 +82,7 @@ async def test_double_synchronized_data_file_backtesting():
     )
 
 
-async def test_double_partially_synchronized_data_file_backtesting_common_only():
+async def test_double_partially_synchronized_data_file_backtesting_common_only(error_container):
     await _check_double_backtesting(
         run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[3]],
                                      DATA_FILES[BACKTESTING_SYMBOLS[4]]],
@@ -92,7 +93,7 @@ async def test_double_partially_synchronized_data_file_backtesting_common_only()
     )
 
 
-async def test_double_partially_synchronized_data_file_backtesting_all_data_files_range():
+async def test_double_partially_synchronized_data_file_backtesting_all_data_files_range(error_container):
     await _check_double_backtesting(
         run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[3]],
                                      DATA_FILES[BACKTESTING_SYMBOLS[4]]],
@@ -105,7 +106,7 @@ async def test_double_partially_synchronized_data_file_backtesting_all_data_file
     )
 
 
-async def test_double_data_file_3_months_gap_backtesting_all_data_files_range():
+async def test_double_data_file_3_months_gap_backtesting_all_data_files_range(error_container):
     await _check_double_backtesting(
         run_independent_backtesting([DATA_FILES[BACKTESTING_SYMBOLS[5]],
                                      DATA_FILES[BACKTESTING_SYMBOLS[0]]],

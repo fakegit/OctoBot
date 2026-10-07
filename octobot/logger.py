@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -14,10 +14,10 @@
 #  You should have received a copy of the GNU General Public
 #  License along with OctoBot. If not, see <https://www.gnu.org/licenses/>.
 import logging
+import logging.config
 import os
 import shutil
 import traceback
-import logging.config as config
 
 import sys
 import async_channel.channels as channel_instances
@@ -34,9 +34,11 @@ import octobot_evaluators.evaluators.channel as evaluator_channels
 import octobot_trading.exchange_channel as exchanges_channel
 import octobot_trading.enums as trading_enums
 import octobot_trading.api as trading_api
+import octobot_trading.personal_data as personal_data
 
 import octobot.constants as constants
 import octobot.configuration_manager as configuration_manager
+import octobot_commons.user_root_folder_provider as user_root_folder_provider
 
 BOT_CHANNEL_LOGGER = None
 LOGGER_PRIORITY_LEVEL = channel_enums.ChannelConsumerPriorityLevels.OPTIONAL.value
@@ -47,14 +49,12 @@ def _log_uncaught_exceptions(ex_cls, ex, tb):
     logging.exception("{0}: {1}".format(ex_cls, ex))
 
 
-def init_logger():
+def init_logger(logs_folder: str = constants.DEFAULT_LOGS_FOLDER):
     try:
-        if not os.path.exists(constants.LOGS_FOLDER):
-            os.mkdir(constants.LOGS_FOLDER)
-        _load_logger_config()
-        # overwrite BOT_CHANNEL_LOGGER to apply global logging configuration
-        global BOT_CHANNEL_LOGGER
-        BOT_CHANNEL_LOGGER = common_logging.get_logger("OctoBot Channel")
+        if not os.path.exists(logs_folder):
+            os.makedirs(logs_folder)
+        _load_logger_config(logs_folder)
+        init_bot_channel_logger()
     except KeyError:
         print(
             "Impossible to start OctoBot: the logging configuration can't be found in '"
@@ -75,68 +75,56 @@ def init_logger():
         )
         os._exit(-1)
 
+    # log once rolling over is done to save in the correct file
+    logger.info(f"Saving logs in '{os.path.join(os.getcwd(), logs_folder)}' folder")
     sys.excepthook = _log_uncaught_exceptions
     return logger
 
 
-def _load_logger_config():
+def init_bot_channel_logger():
+    # overwrite BOT_CHANNEL_LOGGER to apply global logging configuration
+    global BOT_CHANNEL_LOGGER
+    BOT_CHANNEL_LOGGER = common_logging.get_logger("OctoBot Channel")
+
+
+def _load_logger_config(logs_folder: str):
     try:
         # use local logging file to allow users to customize the log level
         if not os.path.isfile(configuration_manager.get_user_local_config_file()):
-            if not os.path.exists(commons_constants.USER_FOLDER):
-                os.mkdir(commons_constants.USER_FOLDER)
+            user_root = user_root_folder_provider.get_user_root_folder()
+            if not os.path.exists(user_root):
+                os.mkdir(user_root)
             shutil.copyfile(constants.LOGGING_CONFIG_FILE, configuration_manager.get_user_local_config_file())
-        config.fileConfig(configuration_manager.get_user_local_config_file())
+        logging.config.fileConfig(configuration_manager.get_user_local_config_file())
+        logger = logging.getLogger("Logging Configuration")
+        if logs_folder != constants.DEFAULT_LOGS_FOLDER:
+            _set_log_folder(os.path.join(os.getcwd(), logs_folder))
+        if constants.FORCED_LOG_LEVEL:
+            logger.info(
+                f"Applying forced logging level {constants.FORCED_LOG_LEVEL}"
+            )
+            common_logging.set_global_logger_level(constants.FORCED_LOG_LEVEL)
     except Exception as ex:
-        config.fileConfig(constants.LOGGING_CONFIG_FILE)
-        logging.getLogger("Logging Configuration").warning(f"Impossible to initialize local logging configuration file,"
-                                                           f" using default one. {ex}")
+        logging.config.fileConfig(constants.LOGGING_CONFIG_FILE)
+        logging.getLogger("Logging Configuration").warning(
+            f"Impossible to initialize local logging configuration file, using default one. {ex}"
+        )
+
+
+def _set_log_folder(logs_folder: str):
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.baseFilename = os.path.join(logs_folder, os.path.basename(handler.baseFilename))
 
 
 async def init_exchange_chan_logger(exchange_id):
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.TICKER_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        ticker_callback, priority_level=LOGGER_PRIORITY_LEVEL
-    )
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.MINI_TICKER_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        mini_ticker_callback, priority_level=LOGGER_PRIORITY_LEVEL
-    )
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.RECENT_TRADES_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        recent_trades_callback, priority_level=LOGGER_PRIORITY_LEVEL
-    )
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.ORDER_BOOK_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        order_book_callback, priority_level=LOGGER_PRIORITY_LEVEL
-    )
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.ORDER_BOOK_TICKER_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        order_book_ticker_callback, priority_level=LOGGER_PRIORITY_LEVEL
-    )
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.KLINE_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        kline_callback, priority_level=LOGGER_PRIORITY_LEVEL
-    )
     await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.OHLCV_CHANNEL.value,
                                      exchange_id).new_consumer(
         ohlcv_callback, priority_level=LOGGER_PRIORITY_LEVEL
     )
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.FUNDING_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        funding_callback, priority_level=LOGGER_PRIORITY_LEVEL
-    )
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.MARK_PRICE_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        mark_price_callback, priority_level=LOGGER_PRIORITY_LEVEL
-    )
     await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.BALANCE_CHANNEL.value,
                                      exchange_id).new_consumer(
         balance_callback, priority_level=channel_enums.ChannelConsumerPriorityLevels.MEDIUM.value
-    )
-    await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.BALANCE_PROFITABILITY_CHANNEL.value,
-                                     exchange_id).new_consumer(
-        balance_profitability_callback, priority_level=channel_enums.ChannelConsumerPriorityLevels.MEDIUM.value
     )
     await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.TRADES_CHANNEL.value,
                                      exchange_id).new_consumer(
@@ -154,6 +142,44 @@ async def init_exchange_chan_logger(exchange_id):
                                      exchange_id).new_consumer(
         orders_callback, priority_level=channel_enums.ChannelConsumerPriorityLevels.MEDIUM.value
     )
+    # secondary logs, very verbose on websockets
+    if constants.ENV_TRADING_ENABLE_DEBUG_LOGS:
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.RECENT_TRADES_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            recent_trades_callback, priority_level=LOGGER_PRIORITY_LEVEL
+        )
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.FUNDING_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            funding_callback, priority_level=LOGGER_PRIORITY_LEVEL
+        )
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.TICKER_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            ticker_callback, priority_level=LOGGER_PRIORITY_LEVEL
+        )
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.MINI_TICKER_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            mini_ticker_callback, priority_level=LOGGER_PRIORITY_LEVEL
+        )
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.ORDER_BOOK_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            order_book_callback, priority_level=LOGGER_PRIORITY_LEVEL
+        )
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.ORDER_BOOK_TICKER_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            order_book_ticker_callback, priority_level=LOGGER_PRIORITY_LEVEL
+        )
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.KLINE_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            kline_callback, priority_level=LOGGER_PRIORITY_LEVEL
+        )
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.MARK_PRICE_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            mark_price_callback, priority_level=LOGGER_PRIORITY_LEVEL
+        )
+        await exchanges_channel.get_chan(channels_name.OctoBotTradingChannelsName.BALANCE_PROFITABILITY_CHANNEL.value,
+                                         exchange_id).new_consumer(
+            balance_profitability_callback, priority_level=channel_enums.ChannelConsumerPriorityLevels.MEDIUM.value
+        )
 
 
 async def init_evaluator_chan_logger(matrix_id: str):
@@ -168,7 +194,7 @@ async def init_evaluator_chan_logger(matrix_id: str):
 
 
 async def init_octobot_chan_logger(bot_id: str):
-    await channel_instances.get_chan_at_id(constants.OCTOBOT_CHANNEL, bot_id).new_consumer(
+    return await channel_instances.get_chan_at_id(constants.OCTOBOT_CHANNEL, bot_id).new_consumer(
         octobot_channel_callback,
         priority_level=LOGGER_PRIORITY_LEVEL,
         bot_id=bot_id,
@@ -177,7 +203,7 @@ async def init_octobot_chan_logger(bot_id: str):
 
 
 async def ticker_callback(
-    exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, ticker
+        exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, ticker
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"TICKER : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} "
@@ -186,7 +212,7 @@ async def ticker_callback(
 
 
 async def mini_ticker_callback(
-    exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, mini_ticker
+        exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, mini_ticker
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"MINI TICKER : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} "
@@ -195,7 +221,7 @@ async def mini_ticker_callback(
 
 
 async def order_book_callback(
-    exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, asks, bids
+        exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, asks, bids
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"ORDERBOOK : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} "
@@ -204,14 +230,14 @@ async def order_book_callback(
 
 
 async def order_book_ticker_callback(
-    exchange: str,
-    exchange_id: str,
-    cryptocurrency: str,
-    symbol: str,
-    ask_quantity,
-    ask_price,
-    bid_quantity,
-    bid_price,
+        exchange: str,
+        exchange_id: str,
+        cryptocurrency: str,
+        symbol: str,
+        ask_quantity,
+        ask_price,
+        bid_quantity,
+        bid_price,
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"ORDERBOOK TICKER : EXCHANGE = {exchange} || SYMBOL = {symbol} "
@@ -221,12 +247,12 @@ async def order_book_ticker_callback(
 
 
 async def ohlcv_callback(
-    exchange: str,
-    exchange_id: str,
-    cryptocurrency: str,
-    symbol: str,
-    time_frame,
-    candle,
+        exchange: str,
+        exchange_id: str,
+        cryptocurrency: str,
+        symbol: str,
+        time_frame,
+        candle,
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"OHLCV : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} || SYMBOL = {symbol} "
@@ -235,7 +261,7 @@ async def ohlcv_callback(
 
 
 async def recent_trades_callback(
-    exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, recent_trades
+        exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, recent_trades
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"RECENT TRADES : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} "
@@ -244,7 +270,7 @@ async def recent_trades_callback(
 
 
 async def liquidations_callback(
-    exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, liquidations
+        exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, liquidations
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"LIQUIDATIONS : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} "
@@ -253,7 +279,7 @@ async def liquidations_callback(
 
 
 async def kline_callback(
-    exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, time_frame, kline
+        exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, time_frame, kline
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"KLINE : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} || SYMBOL = {symbol} "
@@ -262,7 +288,7 @@ async def kline_callback(
 
 
 async def mark_price_callback(
-    exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, mark_price
+        exchange: str, exchange_id: str, cryptocurrency: str, symbol: str, mark_price
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"MARK PRICE : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} "
@@ -270,18 +296,51 @@ async def mark_price_callback(
     )
 
 
+async def markets_callback(
+        exchange: str, exchange_id: str, markets
+):
+    BOT_CHANNEL_LOGGER.debug(
+        f"MARKETS : EXCHANGE = {exchange} || MARKET RELOADED"
+    )
+
+
+def _filter_balance(balance: dict):
+    if not balance:
+        return balance, 0
+    first_value = next(iter(balance.values()))
+    if isinstance(first_value, dict):
+        filtered_balance = {
+            key: values
+            for key, values in balance.items()
+            if values.get(commons_constants.PORTFOLIO_TOTAL)
+        }
+        removed_count = len(balance) - len(filtered_balance)
+        return trading_api.parse_decimal_portfolio(filtered_balance, False), removed_count
+    elif isinstance(first_value, personal_data.Asset):
+        filtered_balance = {
+            key: values
+            for key, values in balance.items()
+            if values.total
+        }
+        removed_count = len(balance) - len(filtered_balance)
+        return filtered_balance, removed_count
+    return balance, 0
+
+
 async def balance_callback(exchange: str, exchange_id: str, balance):
-    BOT_CHANNEL_LOGGER.debug(f"BALANCE : EXCHANGE = {exchange} || BALANCE = "
-                             f"{trading_api.format_portfolio(balance, as_decimal=False)}")
+    filtered_balance, filtered_count = _filter_balance(balance)
+    BOT_CHANNEL_LOGGER.debug(
+        f"BALANCE : EXCHANGE = {exchange} || BALANCE = {filtered_balance} ({filtered_count} filtered empty assets)"
+    )
 
 
 async def balance_profitability_callback(
-    exchange: str,
-    exchange_id: str,
-    profitability,
-    profitability_percent,
-    market_profitability_percent,
-    initial_portfolio_current_profitability,
+        exchange: str,
+        exchange_id: str,
+        profitability,
+        profitability_percent,
+        market_profitability_percent,
+        initial_portfolio_current_profitability,
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"BALANCE PROFITABILITY : EXCHANGE = {exchange} || PROFITABILITY = "
@@ -290,12 +349,12 @@ async def balance_profitability_callback(
 
 
 async def trades_callback(
-    exchange: str,
-    exchange_id: str,
-    cryptocurrency: str,
-    symbol: str,
-    trade: dict,
-    old_trade: bool,
+        exchange: str,
+        exchange_id: str,
+        cryptocurrency: str,
+        symbol: str,
+        trade: dict,
+        old_trade: bool,
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"TRADES : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} || SYMBOL = {symbol} "
@@ -305,80 +364,80 @@ async def trades_callback(
 
 
 async def orders_callback(
-    exchange: str,
-    exchange_id: str,
-    cryptocurrency: str,
-    symbol: str,
-    order: dict,
-    is_new: bool,
-    is_from_bot: bool,
+        exchange: str,
+        exchange_id: str,
+        cryptocurrency: str,
+        symbol: str,
+        order: dict,
+        update_type: str,
+        is_from_bot: bool,
 ):
     order_string = f"ORDERS : EXCHANGE = {exchange} || SYMBOL = {symbol} || " \
                    f"{pretty_printer.open_order_pretty_printer(exchange, order)} || " \
                    f"status = {order.get(trading_enums.ExchangeConstantsOrderColumns.STATUS.value, None)} || " \
-                   f"CREATED = {is_new} || FROM_BOT = {is_from_bot}"
+                   f"UPDATE_TYPE = {update_type} || FROM_BOT = {is_from_bot}"
     BOT_CHANNEL_LOGGER.debug(order_string)
 
 
 async def positions_callback(
-    exchange: str,
-    exchange_id: str,
-    cryptocurrency: str,
-    symbol: str,
-    position,
-    is_updated: bool,
-    is_liquidated: bool
+        exchange: str,
+        exchange_id: str,
+        cryptocurrency: str,
+        symbol: str,
+        position,
+        is_updated: bool
 ):
-    BOT_CHANNEL_LOGGER.debug(
-        f"POSITIONS : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} "
-        f"|| SYMBOL = {symbol} || POSITIONS = {position} || UPDATED = {is_updated} || LIQUIDATED = {is_liquidated} "
-    )
+    BOT_CHANNEL_LOGGER.debug(f"POSITIONS : EXCHANGE = {exchange} || POSITIONS = {position}")
 
 
 async def funding_callback(
-    exchange: str,
-    exchange_id: str,
-    cryptocurrency: str,
-    symbol: str,
-    funding_rate,
-    next_funding_time,
-    timestamp,
+        exchange: str,
+        exchange_id: str,
+        cryptocurrency: str,
+        symbol: str,
+        funding_rate,
+        predicted_funding_rate,
+        next_funding_time,
+        timestamp,
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"FUNDING : EXCHANGE = {exchange} || CRYPTOCURRENCY = {cryptocurrency} || SYMBOL = {symbol} "
-        f"|| RATE = {str(funding_rate)} "
+        f"|| RATE = {str(funding_rate)} || NEXT RATE = {str(predicted_funding_rate)}"
         f"|| NEXT TIME = {str(next_funding_time)} || TIMESTAMP = {str(timestamp)}"
     )
 
 
 async def matrix_callback(
-    matrix_id,
-    evaluator_name,
-    evaluator_type,
-    eval_note,
-    eval_note_type,
-    exchange_name,
-    cryptocurrency,
-    symbol,
-    time_frame,
+        matrix_id,
+        evaluator_name,
+        evaluator_type,
+        eval_note,
+        eval_note_type,
+        eval_note_description,
+        eval_note_metadata,
+        exchange_name,
+        cryptocurrency,
+        symbol,
+        time_frame,
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"MATRIX : EXCHANGE = {exchange_name} || "
         f"EVALUATOR = {evaluator_name} || EVALUATOR_TYPE = {evaluator_type} || "
         f"CRYPTOCURRENCY = {cryptocurrency} || SYMBOL = {symbol} || TF = {time_frame} "
         f"|| NOTE = {eval_note} [MATRIX id = {matrix_id}] "
+        f"|| DESCRIPTION = {eval_note_description if eval_note_description else ''}"
     )
 
 
 async def evaluators_callback(
-    matrix_id,
-    evaluator_name,
-    evaluator_type,
-    exchange_name,
-    cryptocurrency,
-    symbol,
-    time_frame,
-    data,
+        matrix_id,
+        evaluator_name,
+        evaluator_type,
+        exchange_name,
+        cryptocurrency,
+        symbol,
+        time_frame,
+        data,
 ):
     BOT_CHANNEL_LOGGER.debug(
         f"EVALUATORS : EXCHANGE = {exchange_name} || "

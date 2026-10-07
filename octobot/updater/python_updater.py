@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -49,10 +49,11 @@ class PythonUpdater(updater_class.Updater):
 
     async def _get_latest_pypi_version_data(self):
         try:
-            async with aiohttp.ClientSession().get(self._get_latest_pypi_release_url()) as resp:
-                text = await resp.text()
-                if resp.status == 200:
-                    return json.loads(text)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self._get_latest_pypi_release_url()) as resp:
+                    text = await resp.text()
+                    if resp.status == 200:
+                        return json.loads(text)
             return None
         except Exception as e:
             self.logger.debug(f"Error when fetching latest pypi package data : {e}")

@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -63,17 +63,17 @@ class BinaryUpdater(updater_class.Updater):
             return True
         return False
 
-    def _get_latest_release_url(self):
-        return f"{commons_constants.GITHUB_API_CONTENT_URL}/repos/" \
-               f"{commons_constants.GITHUB_ORGANISATION}/" \
-               f"{constants.OCTOBOT_BINARY_PROJECT_NAME}/releases/latest"
+    def _get_latest_release_url(self, use_api_url):
+        base = f"{commons_constants.GITHUB_API_CONTENT_URL}/repos" if use_api_url else commons_constants.GITHUB_BASE_URL
+        return f"{base}/{commons_constants.GITHUB_ORGANISATION}/{constants.PROJECT_NAME}/releases/latest"
 
     async def _get_latest_release_data(self):
         try:
-            async with aiohttp.ClientSession().get(self._get_latest_release_url()) as resp:
-                text = await resp.text()
-                if resp.status == 200:
-                    return json.loads(text)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self._get_latest_release_url(True)) as resp:
+                    text = await resp.text()
+                    if resp.status == 200:
+                        return json.loads(text)
             return None
         except Exception as e:
             self.logger.debug(f"Error when fetching latest binary data : {e}")
@@ -134,10 +134,11 @@ class BinaryUpdater(updater_class.Updater):
             return None
         self.logger.info(f"Start downloading OctoBot update at {new_binary_file_url}")
         async with aiofiles.open(new_binary_file, 'wb+') as downloaded_file:
-            await aiohttp_util.download_stream_file(output_file=downloaded_file,
-                                                    file_url=new_binary_file_url,
-                                                    aiohttp_session=aiohttp.ClientSession(),
-                                                    is_aiofiles_output_file=True)
+            async with aiohttp.ClientSession() as session:
+                await aiohttp_util.download_stream_file(output_file=downloaded_file,
+                                                        file_url=new_binary_file_url,
+                                                        aiohttp_session=session,
+                                                        is_aiofiles_output_file=True)
         self.logger.info(f"OctoBot update downloaded successfully")
         return new_binary_file
 

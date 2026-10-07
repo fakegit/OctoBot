@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -77,5 +77,7 @@ class ServiceFeedProducer(octobot_channels.OctoBotChannelProducer):
         self.service_feeds.append(instance)
 
     async def stop(self):
+        self.logger.debug("Stopping ...")
         for service_feed in self.service_feeds:
             await service_api.stop_service_feed(service_feed)
+        self.logger.debug("Stopped")

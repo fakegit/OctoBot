@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -19,6 +19,7 @@ import octobot.constants as constants
 import octobot.configuration_manager as configuration_manager
 import octobot.commands as commands
 import octobot_commons.logging as logging
+import octobot_commons.authentication as authentication
 
 
 class Updater:
@@ -30,7 +31,10 @@ class Updater:
         :return: True if the updater version is greater than current bot version
         """
         try:
-            return packaging_version.parse(await self.get_latest_version()) > packaging_version.parse(constants.VERSION)
+            latest_version = await self.get_latest_version()
+            if latest_version is None:
+                return False
+            return packaging_version.parse(latest_version) > packaging_version.parse(constants.VERSION)
         except TypeError as e:
             self.logger.debug(f"Error when comparing latest with current OctoBot version: {e}")
 
@@ -41,8 +45,14 @@ class Updater:
         raise NotImplementedError("update_impl is not implemented")
 
     async def update_tentacles(self):
+        bot_version = await self.get_latest_version()
+        authenticator = authentication.Authenticator.instance()
+        additional_tentacles_package_urls = authenticator.get_saved_package_urls()
         await commands.install_all_tentacles(
-            tentacles_url=configuration_manager.get_default_tentacles_url(version=await self.get_latest_version()))
+            tentacles_url=configuration_manager.get_default_tentacles_url(version=bot_version),
+            additional_tentacles_package_urls=additional_tentacles_package_urls,
+            bot_version=bot_version
+        )
 
     async def post_update(self):
         await self.update_tentacles()

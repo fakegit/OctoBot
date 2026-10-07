@@ -1,5 +1,5 @@
 #  This file is part of OctoBot (https://github.com/Drakkar-Software/OctoBot)
-#  Copyright (c) 2021 Drakkar-Software, All rights reserved.
+#  Copyright (c) 2025 Drakkar-Software, All rights reserved.
 #
 #  OctoBot is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -99,6 +99,10 @@ DATA_FILES = {
     "2020ADA/USDT": path.join(TEST_DATA_FILES_FOLDER, "ExchangeHistoryDataCollector_1587769859.9278197.data"),
     "2020ADA/BTC": path.join(TEST_DATA_FILES_FOLDER, "ExchangeHistoryDataCollector_1588110698.1060486.data")
 }
+
+MULTI_ASSETS_DATA_FILE = path.join(
+    constants.OPTIMIZER_DATA_FILES_FOLDER, "ExchangeHistoryDataCollector_1711122002.311132.data"
+)
 
 EXTENDED_DATA_FILES = {
     "ADA/BTC": path.join(constants.OPTIMIZER_DATA_FILES_FOLDER,
